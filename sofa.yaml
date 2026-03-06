@@ -1,0 +1,250 @@
+esphome:
+  # Hostname for the device; mac_suffix differentiates multiple units
+  name: espsofa
+  friendly_name: Sofa
+  name_add_mac_suffix: true
+
+esp32:
+  board: esp32-c6-devkitm-1
+  framework:
+    type: esp-idf
+
+# Enable logging via UART
+logger:
+
+# default HA integration, OTA updater and backup http web portal
+api:
+  # TODO increase the security
+  # password: !secret device_password
+  #encryption:
+  #  key: "YOUR_ENCRYPTION_KEY"
+  # 5m default delay. if no home assistant, then force reboot
+  reboot_timeout: 0s
+
+# OTA update support
+ota:
+  - platform: esphome
+  # TODO increase the security
+  # password: !secret device_password
+  # change to https://esphome.io/components/ota/http_request ?
+
+wifi:
+  networks:
+    - ssid: !secret wifi_1_ssid
+      password: !secret wifi_1_password
+    - ssid: !secret wifi_2_ssid
+      password: !secret wifi_2_password
+  post_connect_roaming: true
+
+# Local diagnostic web portal
+web_server:
+  port: 80
+  version: 3
+
+# ---------------------------------------------------------------------------
+# GLOBALS
+# ---------------------------------------------------------------------------
+globals:
+  # Tracks whether physical buttons are locked out (mirrors binary_sensor state)
+  - id: buttons_locked
+    type: bool
+    initial_value: 'false'
+
+# ---------------------------------------------------------------------------
+# BINARY SENSORS  –  physical inputs
+# ---------------------------------------------------------------------------
+binary_sensor:
+
+  # --- Lockout input (IO14) ---
+  # When HIGH, all physical button commands are ignored.
+  # Normally pulled LOW.
+  - platform: gpio
+    pin:
+      number: GPIO14
+      mode:
+        input: true
+        pulldown: true
+    name: "Sofa Button Lock"
+    id: button_lock
+    icon: "mdi:lock"
+    device_class: lock
+    on_state:
+      then:
+        - globals.set:
+            id: buttons_locked
+            value: !lambda 'return x;'
+
+  # === LEFT COVER physical buttons (IO20 / IO21) ===
+
+  - platform: gpio
+    pin:
+      number: GPIO20
+      mode:
+        input: true
+        pulldown: true
+    name: "Left Cover Open Button"
+    id: btn_left_open
+    icon: "mdi:arrow-up-box"
+    # Expose button state to HA but gate motor action on lock
+    on_press:
+      then:
+        - if:
+            condition:
+              lambda: 'return !id(buttons_locked);'
+            then:
+              - cover.open: cover_left
+
+  - platform: gpio
+    pin:
+      number: GPIO21
+      mode:
+        input: true
+        pulldown: true
+    name: "Left Cover Close Button"
+    id: btn_left_close
+    icon: "mdi:arrow-down-box"
+    on_press:
+      then:
+        - if:
+            condition:
+              lambda: 'return !id(buttons_locked);'
+            then:
+              - cover.close: cover_left
+
+  # === RIGHT COVER physical buttons (IO22 / IO23) ===
+
+  - platform: gpio
+    pin:
+      number: GPIO22
+      mode:
+        input: true
+        pulldown: true
+    name: "Right Cover Open Button"
+    id: btn_right_open
+    icon: "mdi:arrow-up-box"
+    on_press:
+      then:
+        - if:
+            condition:
+              lambda: 'return !id(buttons_locked);'
+            then:
+              - cover.open: cover_right
+
+  - platform: gpio
+    pin:
+      number: GPIO23
+      mode:
+        input: true
+        pulldown: true
+    name: "Right Cover Close Button"
+    id: btn_right_close
+    icon: "mdi:arrow-down-box"
+    on_press:
+      then:
+        - if:
+            condition:
+              lambda: 'return !id(buttons_locked);'
+            then:
+              - cover.close: cover_right
+
+# ---------------------------------------------------------------------------
+# OUTPUTS  –  motor driver pins
+# ---------------------------------------------------------------------------
+# IO0 = Left motor OPEN  (extend)
+# IO1 = Left motor CLOSE (retract)
+# IO2 = Right motor OPEN  (extend)
+# IO3 = Right motor CLOSE (retract)
+output:
+  - platform: gpio
+    id: out_left_open
+    pin: GPIO0
+
+  - platform: gpio
+    id: out_left_close
+    pin: GPIO1
+
+  - platform: gpio
+    id: out_right_open
+    pin: GPIO2
+
+  - platform: gpio
+    id: out_right_close
+    pin: GPIO3
+
+# ---------------------------------------------------------------------------
+# COVERS  –  stateless, independent
+# ---------------------------------------------------------------------------
+# Both covers use the time-based platform without position sensing.
+# open_duration / close_duration are placeholders – tune to actual motor speed.
+# assumed_state: true makes HA show open/close buttons even without feedback.
+cover:
+
+  # --- Left sofa cover ---
+  - platform: time_based
+    name: "Left Sofa Cover"
+    id: cover_left
+    icon: "mdi:sofa"
+    # No position tracking – stateless operation
+    assumed_state: true
+    # Adjust durations to match the actual motor travel time
+    open_duration: 30s
+    close_duration: 30s
+    open_action:
+      - output.turn_on: out_left_open
+      - output.turn_off: out_left_close
+    close_action:
+      - output.turn_off: out_left_open
+      - output.turn_on: out_left_close
+    stop_action:
+      - output.turn_off: out_left_open
+      - output.turn_off: out_left_close
+
+  # --- Right sofa cover ---
+  - platform: time_based
+    name: "Right Sofa Cover"
+    id: cover_right
+    icon: "mdi:sofa"
+    assumed_state: true
+    open_duration: 30s
+    close_duration: 30s
+    open_action:
+      - output.turn_on: out_right_open
+      - output.turn_off: out_right_close
+    close_action:
+      - output.turn_off: out_right_open
+      - output.turn_on: out_right_close
+    stop_action:
+      - output.turn_off: out_right_open
+      - output.turn_off: out_right_close
+
+# ---------------------------------------------------------------------------
+# UTILITY
+# ---------------------------------------------------------------------------
+button:
+  - platform: restart
+    name: "ESPHome Restart"
+    entity_category: "config"
+
+text_sensor:
+  - platform: version
+    name: "Sofa ESPHome Version"
+    icon: mdi:information
+    hide_timestamp: true
+
+  - platform: wifi_info
+    ip_address:
+      name: "Sofa IP Address"
+    mac_address:
+      name: "Sofa MAC Address"
+
+sensor:
+  - platform: wifi_signal
+    name: "WiFi Signal (RSSI)"
+    update_interval: 60s
+    entity_category: "diagnostic"
+
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: "Europe/Rome"
+
