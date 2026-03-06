@@ -81,7 +81,8 @@ binary_sensor:
       number: GPIO20
       mode:
         input: true
-        pulldown: true
+        pullup: true
+    inverted: true
     name: "Left Cover Open Button"
     id: btn_left_open
     icon: "mdi:arrow-up-box"
@@ -99,7 +100,8 @@ binary_sensor:
       number: GPIO21
       mode:
         input: true
-        pulldown: true
+        pullup: true
+    inverted: true
     name: "Left Cover Close Button"
     id: btn_left_close
     icon: "mdi:arrow-down-box"
@@ -118,7 +120,8 @@ binary_sensor:
       number: GPIO22
       mode:
         input: true
-        pulldown: true
+        pullup: true
+    inverted: true
     name: "Right Cover Open Button"
     id: btn_right_open
     icon: "mdi:arrow-up-box"
@@ -135,7 +138,8 @@ binary_sensor:
       number: GPIO23
       mode:
         input: true
-        pulldown: true
+        pullup: true
+    inverted: true
     name: "Right Cover Close Button"
     id: btn_right_close
     icon: "mdi:arrow-down-box"
@@ -158,18 +162,22 @@ output:
   - platform: gpio
     id: out_left_open
     pin: GPIO0
+    inverted: true
 
   - platform: gpio
     id: out_left_close
     pin: GPIO1
+    inverted: true
 
   - platform: gpio
     id: out_right_open
     pin: GPIO2
+    inverted: true
 
   - platform: gpio
     id: out_right_close
     pin: GPIO3
+    inverted: true
 
 # ---------------------------------------------------------------------------
 # COVERS  –  stateless, independent
