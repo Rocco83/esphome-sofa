@@ -3,6 +3,12 @@ esphome:
   name: espsofa
   friendly_name: Sofa
   name_add_mac_suffix: true
+  on_boot:
+    priority: -100  # Run after all sensors are initialized
+    then:
+      - globals.set:
+          id: buttons_locked
+          value: !lambda 'return id(button_lock).state;'
 
 esp32:
   board: esp32-c6-devkitm-1
@@ -39,11 +45,14 @@ wifi:
 # Local diagnostic web portal
 web_server:
   port: 80
-  version: 3
+  version: 2
 
 # ---------------------------------------------------------------------------
 # GLOBALS
 # ---------------------------------------------------------------------------
+substitutions:
+  cover_max_travel_time: "12s"
+
 globals:
   # Tracks whether physical buttons are locked out (mirrors binary_sensor state)
   - id: buttons_locked
@@ -55,12 +64,12 @@ globals:
 # ---------------------------------------------------------------------------
 binary_sensor:
 
-  # --- Lockout input (IO14) ---
+  # --- Lockout input (IO20) ---
   # When HIGH, all physical button commands are ignored.
   # Normally pulled LOW.
   - platform: gpio
     pin:
-      number: GPIO14
+      number: GPIO20
       mode:
         input: true
         pulldown: true
@@ -74,15 +83,15 @@ binary_sensor:
             id: buttons_locked
             value: !lambda 'return x;'
 
-  # === LEFT COVER physical buttons (IO20 / IO21) ===
+  # === LEFT COVER physical buttons (IO14 / IO15) ===
 
   - platform: gpio
     pin:
-      number: GPIO20
+      number: GPIO14
       mode:
         input: true
         pullup: true
-    inverted: true
+      inverted: true
     name: "Left Cover Open Button"
     id: btn_left_open
     icon: "mdi:arrow-up-box"
@@ -94,14 +103,25 @@ binary_sensor:
               lambda: 'return !id(buttons_locked);'
             then:
               - cover.open: cover_left
+            else:
+              - logger.log:
+                  level: INFO
+                  format: "open left button pressed but buttons are locked"
+    on_release:
+      then:
+        - if:
+            condition:
+              lambda: 'return !id(buttons_locked);'
+            then:
+              cover.stop: cover_left
 
   - platform: gpio
     pin:
-      number: GPIO21
+      number: GPIO15
       mode:
         input: true
         pullup: true
-    inverted: true
+      inverted: true
     name: "Left Cover Close Button"
     id: btn_left_close
     icon: "mdi:arrow-down-box"
@@ -112,16 +132,27 @@ binary_sensor:
               lambda: 'return !id(buttons_locked);'
             then:
               - cover.close: cover_left
+            else:
+              - logger.log:
+                  level: INFO
+                  format: "close left button pressed but buttons are locked"
+    on_release:
+      then:
+        - if:
+            condition:
+              lambda: 'return !id(buttons_locked);'
+            then:
+              cover.stop: cover_left
 
-  # === RIGHT COVER physical buttons (IO22 / IO23) ===
+  # === RIGHT COVER physical buttons (IO18 / IO19) ===
 
   - platform: gpio
     pin:
-      number: GPIO22
+      number: GPIO18
       mode:
         input: true
         pullup: true
-    inverted: true
+      inverted: true
     name: "Right Cover Open Button"
     id: btn_right_open
     icon: "mdi:arrow-up-box"
@@ -132,14 +163,25 @@ binary_sensor:
               lambda: 'return !id(buttons_locked);'
             then:
               - cover.open: cover_right
+            else:
+              - logger.log:
+                  level: INFO
+                  format: "open right button pressed but buttons are locked"
+    on_release:
+      then:
+        - if:
+            condition:
+              lambda: 'return !id(buttons_locked);'
+            then:
+              cover.stop: cover_right
 
   - platform: gpio
     pin:
-      number: GPIO23
+      number: GPIO19
       mode:
         input: true
         pullup: true
-    inverted: true
+      inverted: true
     name: "Right Cover Close Button"
     id: btn_right_close
     icon: "mdi:arrow-down-box"
@@ -150,6 +192,17 @@ binary_sensor:
               lambda: 'return !id(buttons_locked);'
             then:
               - cover.close: cover_right
+            else:
+              - logger.log:
+                  level: INFO
+                  format: "close right button pressed but buttons are locked"
+    on_release:
+      then:
+        - if:
+            condition:
+              lambda: 'return !id(buttons_locked);'
+            then:
+              cover.stop: cover_right
 
 # ---------------------------------------------------------------------------
 # OUTPUTS  –  motor driver pins
@@ -188,42 +241,59 @@ output:
 cover:
 
   # --- Left sofa cover ---
-  - platform: time_based
+  - platform: template
     name: "Left Sofa Cover"
     id: cover_left
     icon: "mdi:sofa"
     # No position tracking – stateless operation
     assumed_state: true
+    # No position feedback – always report open to keep HA controls available
+    lambda: "return COVER_OPEN;"
     # Adjust durations to match the actual motor travel time
-    open_duration: 30s
-    close_duration: 30s
     open_action:
       - output.turn_on: out_left_open
       - output.turn_off: out_left_close
+      - script.execute: left_cover_timeout
     close_action:
       - output.turn_off: out_left_open
       - output.turn_on: out_left_close
+      - script.execute: left_cover_timeout
     stop_action:
       - output.turn_off: out_left_open
       - output.turn_off: out_left_close
 
   # --- Right sofa cover ---
-  - platform: time_based
+  - platform: template
     name: "Right Sofa Cover"
     id: cover_right
     icon: "mdi:sofa"
     assumed_state: true
-    open_duration: 30s
-    close_duration: 30s
+    # No position feedback – always report open to keep HA controls available
+    lambda: "return COVER_OPEN;"
     open_action:
       - output.turn_on: out_right_open
       - output.turn_off: out_right_close
+      - script.execute: right_cover_timeout
     close_action:
       - output.turn_off: out_right_open
       - output.turn_on: out_right_close
+      - script.execute: right_cover_timeout
     stop_action:
       - output.turn_off: out_right_open
       - output.turn_off: out_right_close
+
+script:
+  - id: left_cover_timeout
+    mode: restart
+    then:
+      - delay: $cover_max_travel_time
+      - cover.stop: cover_left
+
+  - id: right_cover_timeout
+    mode: restart
+    then:
+      - delay: $cover_max_travel_time
+      - cover.stop: cover_right
 
 # ---------------------------------------------------------------------------
 # UTILITY
